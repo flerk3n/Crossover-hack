@@ -7,7 +7,6 @@ CrossOver Reset Script
 
 import os
 import re
-import plistlib
 import subprocess
 from pathlib import Path
 from datetime import datetime
@@ -61,62 +60,37 @@ def remove_reg_section(reg_path: Path, section_header: str) -> bool:
 # ── Helper: update FirstRunDate in the plist ─────────────────────────────────
 def update_plist_date(plist_path: Path) -> bool:
     """
-    Sets the FirstRunDate key to the current system date/time
-    formatted as 'YYYY-MM-DD HH:MM:SS'.
-    Handles both binary and XML plists automatically.
+    Sets the FirstRunDate key to the current date/time using the `defaults`
+    command.  This is essential on macOS because the preferences daemon
+    (cfprefsd) caches plist values in memory — writing the file directly
+    with plistlib gets overwritten by the cached copy.  The `defaults` command
+    talks to cfprefsd so the change actually sticks.
     """
-    if not plist_path.exists():
-        print(f"  [ERROR] Plist not found: {plist_path}")
-        return False
+    domain = plist_path.stem  # e.g. "com.codeweavers.CrossOver"
 
-    # Read – plistlib handles binary and XML automatically
-    try:
-        with plist_path.open("rb") as f:
-            data = plistlib.load(f)
-    except Exception as e:
-        print(f"  [ERROR] Cannot read plist: {e}")
-        return False
+    # Read current value for display
+    result = subprocess.run(
+        ["defaults", "read", domain, "FirstRunDate"],
+        capture_output=True, text=True
+    )
+    old_val = result.stdout.strip() if result.returncode == 0 else "<not set>"
 
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    old_val = data.get("FirstRunDate", "<not set>")
-    data["FirstRunDate"] = now_str
-
+    # Write the new date using `defaults write -date`
+    # The -date flag stores it as a proper NSDate object (what CrossOver expects).
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S +0000")
     print(f"  [INFO]  FirstRunDate: '{old_val}'  →  '{now_str}'")
 
-    # Write back as XML so it stays human-readable, or keep binary if needed.
-    # We'll write XML (CrossOver reads both formats fine).
-    try:
-        with plist_path.open("wb") as f:
-            plistlib.dump(data, f, fmt=plistlib.FMT_XML)
-        print(f"  [OK]    Plist updated: {plist_path}")
-        return True
-    except OSError as e:
-        # macOS may lock the file if CrossOver is running; try with sudo via
-        # a temp file + mv approach as fallback.
-        print(f"  [WARN]  Direct write failed ({e}), trying temp-file approach …")
-        return _write_plist_via_temp(data, plist_path)
+    result = subprocess.run(
+        ["defaults", "write", domain, "FirstRunDate", "-date", now_str],
+        capture_output=True, text=True
+    )
 
-
-def _write_plist_via_temp(data: dict, plist_path: Path) -> bool:
-    """Fallback: write to /tmp then move with sudo if needed."""
-    tmp = Path("/tmp/com.codeweavers.CrossOver.plist.tmp")
-    try:
-        with tmp.open("wb") as f:
-            plistlib.dump(data, f, fmt=plistlib.FMT_XML)
-        # Replace original (may need sudo)
-        result = subprocess.run(
-            ["cp", str(tmp), str(plist_path)],
-            capture_output=True, text=True
-        )
-        if result.returncode != 0:
-            print(f"  [ERROR] cp failed: {result.stderr.strip()}")
-            print(f"          Manually copy {tmp} to {plist_path}")
-            return False
-        print(f"  [OK]    Plist written via temp file.")
-        return True
-    except Exception as e:
-        print(f"  [ERROR] Temp-file approach failed: {e}")
+    if result.returncode != 0:
+        print(f"  [ERROR] defaults write failed: {result.stderr.strip()}")
         return False
+
+    print(f"  [OK]    Plist updated via `defaults write`.")
+    return True
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
