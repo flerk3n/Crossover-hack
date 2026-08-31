@@ -1,3 +1,5 @@
+
+
 # CrossOver Reset Script
 
 A simple Python script for macOS that resets the CrossOver trial period.
@@ -20,6 +22,8 @@ If you hit a permissions error:
 ```bash
 sudo python3 crossover_reset.py
 ```
+
+After the script finishes, restart CrossOver for the changes to take effect.
 
 ## Requirements
 
