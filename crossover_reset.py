@@ -77,7 +77,8 @@ def update_plist_date(plist_path: Path) -> bool:
 
     # Write the new date using `defaults write -date`
     # The -date flag stores it as a proper NSDate object (what CrossOver expects).
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S +0000")
+    # Use MM/DD/YYYY HH:MM:SS format which defaults can parse correctly
+    now_str = datetime.now().strftime("%m/%d/%Y %H:%M:%S")
     print(f"  [INFO]  FirstRunDate: '{old_val}'  →  '{now_str}'")
 
     result = subprocess.run(
@@ -89,7 +90,14 @@ def update_plist_date(plist_path: Path) -> bool:
         print(f"  [ERROR] defaults write failed: {result.stderr.strip()}")
         return False
 
+    # Verify the change took effect
+    verify_result = subprocess.run(
+        ["defaults", "read", domain, "FirstRunDate"],
+        capture_output=True, text=True
+    )
+    new_val = verify_result.stdout.strip() if verify_result.returncode == 0 else "<failed to read>"
     print(f"  [OK]    Plist updated via `defaults write`.")
+    print(f"  [VERIFY] New value: '{new_val}'")
     return True
 
 
